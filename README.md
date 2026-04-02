@@ -5,7 +5,6 @@
 1. **`.htpasskey` 文件**：存储已授权用户的 WebAuthn 公钥凭据（类似 `.htpasswd` / `authorized_keys`）
 2. **注册流程**：未注册用户被 nginx 重定向到注册页面，注册后生成凭据文本，用户复制给管理员
 3. **管理员授权**：管理员通过 `pbpaste >> .htpasskey` 方式添加凭据
-4. **认证流程**：nginx `auth_request` 子请求到本服务，验证 WebAuthn 断言
 
 
 ```
