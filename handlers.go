@@ -121,7 +121,7 @@ func (s *Server) RegisterFinish(w http.ResponseWriter, r *http.Request) {
 
     jok(w, map[string]any{
         "status":     "ok",
-        "credential": line,
+        "credential": line + "\n",
     })
 }
 
