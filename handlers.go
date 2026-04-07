@@ -18,7 +18,7 @@ type Server struct {
     prefix   string
 }
 
-// ── Check (programmatic) ──────────────────────────────────
+// ── Check ─────────────────────────────────────────────────
 
 func (s *Server) Check(w http.ResponseWriter, r *http.Request) {
     if u, ok := s.sessions.CheckAuth(r); ok {
@@ -64,7 +64,6 @@ func (s *Server) RegisterBegin(w http.ResponseWriter, r *http.Request) {
 
     user := &WUser{id: []byte(body.Username), name: body.Username}
 
-    // exclude already-registered credentials
     var excl []protocol.CredentialDescriptor
     if ex := s.store.Find(body.Username); ex != nil {
         for _, c := range ex.creds {
@@ -77,7 +76,6 @@ func (s *Server) RegisterBegin(w http.ResponseWriter, r *http.Request) {
 
     opts, sd, err := s.wa.BeginRegistration(user,
         webauthn.WithExclusions(excl),
-        // 使用兼容方式设置 authenticator selection
         func(cco *protocol.PublicKeyCredentialCreationOptions) {
             cco.AuthenticatorSelection = protocol.AuthenticatorSelection{
                 ResidentKey:      protocol.ResidentKeyRequirementPreferred,
@@ -118,7 +116,8 @@ func (s *Server) RegisterFinish(w http.ResponseWriter, r *http.Request) {
     }
 
     line := FormatLine(uname, cred)
-    log.Printf("New credential for %q (pending admin approval)", uname)
+    log.Printf("New credential for %q — BE=%v BS=%v (pending admin approval)",
+        uname, cred.Flags.BackupEligible, cred.Flags.BackupState)
 
     jok(w, map[string]any{
         "status":     "ok",
@@ -154,7 +153,6 @@ func (s *Server) LoginBegin(w http.ResponseWriter, r *http.Request) {
     body.Username = strings.TrimSpace(body.Username)
 
     if body.Username == "" {
-        // discoverable credential (passkey) flow
         opts, sd, err := s.wa.BeginDiscoverableLogin(
             func(opts *protocol.PublicKeyCredentialRequestOptions) {
                 opts.UserVerification = protocol.VerificationPreferred
@@ -191,6 +189,44 @@ func (s *Server) LoginBegin(w http.ResponseWriter, r *http.Request) {
     jok(w, opts)
 }
 
+// parseLoginAuthData 从 authenticatorData 前几个字节中提取 flags
+// https://www.w3.org/TR/webauthn-2/#sctn-authenticator-data
+// authData[32] = flags byte:  bit0=UP, bit2=UV, bit3=BE, bit4=BS, bit6=AT, bit7=ED
+func parseLoginFlags(authData []byte) (be bool, bs bool, ok bool) {
+    if len(authData) < 33 {
+        return false, false, false
+    }
+    flags := authData[32]
+    be = (flags & 0x08) != 0 // bit 3
+    bs = (flags & 0x10) != 0 // bit 4
+    return be, bs, true
+}
+
+// getStoredFlags 从 store 中查找匹配的 credential 返回注册时保存的 flags
+func (s *Server) getStoredFlags(user *WUser, credID []byte) (be bool, bs bool, found bool) {
+    if user == nil {
+        return
+    }
+    for _, c := range user.creds {
+        if bytesEqual(c.ID, credID) {
+            return c.Flags.BackupEligible, c.Flags.BackupState, true
+        }
+    }
+    return
+}
+
+func bytesEqual(a, b []byte) bool {
+    if len(a) != len(b) {
+        return false
+    }
+    for i := range a {
+        if a[i] != b[i] {
+            return false
+        }
+    }
+    return true
+}
+
 func (s *Server) LoginFinish(w http.ResponseWriter, r *http.Request) {
     if r.Method != "POST" {
         http.Error(w, "POST required", 405)
@@ -206,46 +242,78 @@ func (s *Server) LoginFinish(w http.ResponseWriter, r *http.Request) {
     if uname == "" {
         // discoverable flow
         var authedUser string
-        _, err := s.wa.FinishDiscoverableLogin(
+        var resolvedUser *WUser
+        cred, err := s.wa.FinishDiscoverableLogin(
             func(rawID, userHandle []byte) (webauthn.User, error) {
                 u := s.store.FindByID(userHandle)
                 if u == nil {
                     return nil, fmt.Errorf("unknown user")
                 }
                 authedUser = u.name
+                resolvedUser = u
                 return u, nil
             },
             *sd, r,
         )
-	if err != nil {
-		// 处理BackupEligible不一致的问题，降级处理
-		errStr := err.Error()
-		if strings.Contains(errStr, "BackupEligible") || strings.Contains(errStr, "backup") {
-			log.Printf("Ignoring BackupEligible flag mismatch for %q", authedUser)
-		} else {
-
-			log.Printf("FinishDiscoverableLogin: %v", err)
-			jerr(w, fmt.Sprintf("login failed: %v", err), 401)
-			return
-		}
-	}
+        if err != nil {
+            errStr := err.Error()
+            if strings.Contains(errStr, "BackupEligible") || strings.Contains(errStr, "backup") {
+                // 输出详细的 flag 比较信息
+                var loginBE, loginBS bool
+                if cred != nil {
+                    loginBE = cred.Flags.BackupEligible
+                    loginBS = cred.Flags.BackupState
+                }
+                storedBE, storedBS, found := s.getStoredFlags(resolvedUser, sd.UserID)
+                log.Printf("BackupEligible mismatch for %q — "+
+                    "stored(BE=%v, BS=%v, found=%v) vs login(BE=%v, BS=%v) — allowing anyway",
+                    authedUser, storedBE, storedBS, found, loginBE, loginBS)
+            } else {
+                log.Printf("FinishDiscoverableLogin: %v", err)
+                jerr(w, fmt.Sprintf("login failed: %v", err), 401)
+                return
+            }
+        }
+        if authedUser == "" {
+            jerr(w, "login failed: user not resolved", 401)
+            return
+        }
         log.Printf("Authenticated %q (discoverable)", authedUser)
         s.sessions.SetAuth(w, r, authedUser)
         jok(w, map[string]string{"status": "ok", "user": authedUser})
         return
     }
 
+    // username flow
     user := s.store.Find(uname)
     if user == nil {
         jerr(w, "user disappeared from .htpasskey", 404)
         return
     }
 
-    _, err = s.wa.FinishLogin(user, *sd, r)
+    cred, err := s.wa.FinishLogin(user, *sd, r)
     if err != nil {
-        log.Printf("FinishLogin(%s): %v", uname, err)
-        jerr(w, fmt.Sprintf("login failed: %v", err), 401)
-        return
+        errStr := err.Error()
+        if strings.Contains(errStr, "BackupEligible") || strings.Contains(errStr, "backup") {
+            // 从返回的 credential 中拿登录时的 flags
+            var loginBE, loginBS bool
+            if cred != nil {
+                loginBE = cred.Flags.BackupEligible
+                loginBS = cred.Flags.BackupState
+            }
+            // 从 store 中拿注册时的 flags
+            storedBE, storedBS, found := false, false, false
+            if cred != nil {
+                storedBE, storedBS, found = s.getStoredFlags(user, cred.ID)
+            }
+            log.Printf("BackupEligible mismatch for %q — "+
+                "stored(BE=%v, BS=%v, found=%v) vs login(BE=%v, BS=%v) — allowing anyway",
+                uname, storedBE, storedBS, found, loginBE, loginBS)
+        } else {
+            log.Printf("FinishLogin(%s): %v", uname, err)
+            jerr(w, fmt.Sprintf("login failed: %v", err), 401)
+            return
+        }
     }
 
     log.Printf("Authenticated %q", uname)
