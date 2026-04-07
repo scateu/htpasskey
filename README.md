@@ -1,3 +1,9 @@
+<img width="956" height="745" alt="image" src="https://github.com/user-attachments/assets/8e48644a-c094-416f-a984-4fec344ea147" />
+<img width="933" height="798" alt="image" src="https://github.com/user-attachments/assets/e4e93ed1-0609-48de-9007-c43f3d980597" />
+<img width="886" height="703" alt="image" src="https://github.com/user-attachments/assets/04a749a7-3fb3-4833-b18f-4e85abfe8b0a" />
+<img width="694" height="577" alt="image" src="https://github.com/user-attachments/assets/c43d8802-4a20-49bf-98b0-c757376ba559" />
+
+
 ## 设计概述
 
 这是一个独立的 Go HTTPS 服务器，实现类似 `.htpasswd` 的 WebAuthn 认证方案：
