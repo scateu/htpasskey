@@ -64,6 +64,11 @@ go build -o webauthn-gate .
   -htpasskey /etc/webauthn/.htpasskey \
   -backend /fwd?q=aHR0cDovLzEyNy4wLjAu1:8080 \
   -session-ttl 12h
+
+# Windows + SSL证书示例
+
+.\webauthn-gate.exe -webroot . -tls-cert .\domain.cert.pem -tls-key  .\private.key.pem -rp-id thinkpad.itmight.work -rp-name "Thinkpad Passkey" -listen :443
+
 ```
 
 ## 使用流程
