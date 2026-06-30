@@ -62,7 +62,7 @@ go build -o webauthn-gate .
   -tls-cert /etc/ssl/cert.pem \
   -tls-key /etc/ssl/key.pem \
   -htpasskey /etc/webauthn/.htpasskey \
-  -backend /fwd?q=aHR0cDovLzEyNy4wLjAu1:8080 \
+  -backend http://127.0.0.1:8080 \
   -session-ttl 12h
 
 # Windows + SSL证书示例
