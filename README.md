@@ -1,8 +1,33 @@
 <img width="956" height="745" alt="image" src="https://github.com/user-attachments/assets/8e48644a-c094-416f-a984-4fec344ea147" />
 <img width="933" height="798" alt="image" src="https://github.com/user-attachments/assets/e4e93ed1-0609-48de-9007-c43f3d980597" />
 <img width="886" height="703" alt="image" src="https://github.com/user-attachments/assets/04a749a7-3fb3-4833-b18f-4e85abfe8b0a" />
-<img width="694" height="577" alt="image" src="https://github.com/user-attachments/assets/c43d8802-4a20-49bf-98b0-c757376ba559" />
 
+```bash
+k@MacBookPro htpasskey % ./webauthn-gate -h
+Usage of ./webauthn-gate:
+  -backend string
+    	reverse proxy backend (e.g. http://127.0.0.1:3000)
+  -htpasskey string
+    	credential file path (default ".htpasskey")
+  -listen string
+    	listen address (default ":8443")
+  -prefix string
+    	auth endpoint prefix (default "/__webauthn")
+  -rp-id string
+    	WebAuthn RP ID (domain) (default "localhost")
+  -rp-name string
+    	RP display name (default "WebAuthn Gate")
+  -rp-origin string
+    	RP origin (default: https://<rp-id>:<port>)
+  -session-ttl duration
+    	session lifetime (default 24h0m0s)
+  -tls-cert string
+    	TLS cert file (omit = self-signed)
+  -tls-key string
+    	TLS key file
+  -webroot string
+    	serve static files from this dir (if no backend)
+```
 
 ## 设计概述
 
